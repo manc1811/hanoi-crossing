@@ -19,7 +19,9 @@ Nine milestones. Stop after each and wait for review.
 
 - Frozen `State`: `pole_1a`, `pole_1b`, `pole_2`, `pole_3a`, `pole_3b` as
   `tuple[int, ...]` (index 0 = bottom), `hand_a`/`hand_b` as `int | None`,
-  `step: int`, `outcome`.
+  `step: int`, `outcome: Outcome` (`IN_PROGRESS` at the start).
+- `Outcome` enum in `state.py`: the game result. Distinct from `ActionStatus`
+  (M3), which describes a single action.
 - `initial_state(n)` — odds on 1a, evens on 1b, largest at bottom.
 - Seven-member player-relative `Action` enum.
 - `to_dict` / `from_dict` round-trip.
@@ -33,6 +35,8 @@ Test: round-trip is identity; `initial_state(3)` has 1a = (5, 3, 1).
 
 - `legal_actions(state, player) -> frozenset[Action]`.
 - `apply(state, player, action) -> ActionResult` — pure, returns new state.
+- `ActionResult(state, status, reason)`, `ActionStatus` (`OK`, `SKIPPED`,
+  `ILLEGAL`) and `IllegalReason` live in `engine.py`.
 - Illegal actions: state unchanged **except** `step` advances; typed `reason`.
 
 Tests (write these first): each of the five illegal reasons; strictly-larger
@@ -46,7 +50,8 @@ your own pole 3 allowed; illegal action does not mutate the input state object.
 
 - After every action, evaluate the win predicate for **both** players.
 - Predicate: hand empty ∧ pole 1 empty ∧ pole 2 empty ∧ pole 3 non-empty.
-- Outcomes: `IN_PROGRESS`, `A_WINS`, `B_WINS`, `DRAW`, `UNFINISHED`.
+- `State.outcome` values: `IN_PROGRESS`, `A_WINS`, `B_WINS`, `DRAW`,
+  `UNFINISHED`.
 
 Tests (write these first, by hand):
 - **B wins on A's turn**: B has 1b empty, 3b loaded, empty hand; a disk sits on
@@ -72,7 +77,7 @@ Test: `Observation` for A contains no reference to 1b, 3b, or B's disk identity.
 
 - Reads a JSON file: `{"n": 3, "turn_order": ["A","B",...], "moves": [...]}`.
 - Applies moves against the schedule, prints final state + per-step log
-  (`step, player, action, outcome, reason`). `--json` for machine output.
+  (`step, player, action, status, reason`). `--json` for machine output.
 - Handles: moves list shorter than schedule, illegal moves, early win.
 
 

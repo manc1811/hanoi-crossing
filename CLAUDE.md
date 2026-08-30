@@ -63,9 +63,11 @@ mirror each one in `DECISIONS.md` with its rationale.
    lifter's hand), and invite the reader to disprove it. State it as a
    conjecture, not a proof.
 8. **Illegal actions are typed, not exceptions.** Return an
-   `ActionResult(state, outcome, reason)` where `reason` is an enum:
+   `ActionResult(state, status, reason)` where `status: ActionStatus` is `OK`,
+   `SKIPPED` or `ILLEGAL`, and `reason` is set only when `ILLEGAL`, from the enum
    `EMPTY_POLE`, `HAND_FULL`, `HAND_EMPTY`, `SIZE_VIOLATION`, `POLE_NOT_VISIBLE`.
-   `SKIP` is distinct from an illegal action in the log.
+   `SKIP` is distinct from an illegal action in the log. `status` describes the
+   action; the game result is separate and lives on `State.outcome`.
 9. **Hidden information:** a player can see *that* the opponent holds a disk but
    not *which*. Rationale: you can observe a disk vanish from the shared pole
    anyway. A player knows their own disk count, not the opponent's.
