@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from .actions import Action
+from .observation import Observation, observe
 from .state import Outcome, Player, State
 
 #: Which pole each player-relative slot names, per player.
@@ -65,17 +66,18 @@ def _fields(player: Player, action: Action) -> tuple[str, str, str]:
     return verb, _POLE_OF[player, slot], _HAND_OF[player]
 
 
-def _illegality(state: State, player: Player, action: Action) -> IllegalReason | None:
-    """Why `action` is refused for `player`, or None if it is allowed.
+def _illegality(obs: Observation, action: Action) -> IllegalReason | None:
+    """Why `action` is refused, or None if it is allowed. The only copy of the rules.
 
-    Hand state is checked before pole state, so lifting from an empty pole with
-    a full hand reports HAND_FULL.
+    Takes an Observation, not a State: legality never depends on anything the
+    acting player cannot see. Hand state is checked before pole state, so
+    lifting from an empty pole with a full hand reports HAND_FULL.
     """
     if action is Action.SKIP:
         return None
-    verb, pole_field, hand_field = _fields(player, action)
-    pole: tuple[int, ...] = getattr(state, pole_field)
-    hand: int | None = getattr(state, hand_field)
+    verb, _, slot = action.name.partition("_")
+    pole: tuple[int, ...] = getattr(obs, slot.lower())
+    hand: int | None = obs.hand
     if verb == "LIFT":
         if hand is not None:
             return IllegalReason.HAND_FULL
@@ -116,14 +118,24 @@ def _advance(state: State) -> State:
     return replace(state, step=state.step + 1)
 
 
-def legal_actions(state: State, player: Player) -> frozenset[Action]:
-    """The actions `player` may take now. `SKIP` is always among them.
+def legal_actions_from(obs: Observation) -> frozenset[Action]:
+    """The actions this observation allows. `SKIP` is always among them.
 
-    A terminal state has none: the episode is over.
+    An agent needs nothing else: what a player may legally do is a function of
+    what they can see.
+    """
+    return frozenset(a for a in Action if _illegality(obs, a) is None)
+
+
+def legal_actions(state: State, player: Player) -> frozenset[Action]:
+    """The actions `player` may take now, as `legal_actions_from` sees them.
+
+    A terminal state has none: the episode is over. That is the only thing this
+    knows which an observation does not.
     """
     if state.outcome is not Outcome.IN_PROGRESS:
         return frozenset()
-    return frozenset(a for a in Action if _illegality(state, player, a) is None)
+    return legal_actions_from(observe(state, player))
 
 
 def apply(state: State, player: Player, action: Action) -> ActionResult:
@@ -134,7 +146,7 @@ def apply(state: State, player: Player, action: Action) -> ActionResult:
     """
     if state.outcome is not Outcome.IN_PROGRESS:
         return ActionResult(state, ActionStatus.GAME_OVER)
-    reason = _illegality(state, player, action)
+    reason = _illegality(observe(state, player), action)
     if reason is not None:
         return ActionResult(_settle(_advance(state)), ActionStatus.ILLEGAL, reason)
     if action is Action.SKIP:
