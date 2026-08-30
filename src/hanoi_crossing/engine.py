@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from .actions import Action
-from .state import Player, State
+from .state import Outcome, Player, State
 
 #: Which pole each player-relative slot names, per player.
 _POLE_OF: dict[tuple[Player, str], str] = {
@@ -27,11 +27,17 @@ _HAND_OF: dict[Player, str] = {Player.A: "hand_a", Player.B: "hand_b"}
 
 
 class ActionStatus(enum.Enum):
-    """What became of an action: it took effect, it was a skip, or it was refused."""
+    """What became of an action.
+
+    GAME_OVER means the game had already ended: nothing happened at all, not
+    even the step counter. It is not an illegal action, so it carries no
+    IllegalReason.
+    """
 
     OK = "OK"
     SKIPPED = "SKIPPED"
     ILLEGAL = "ILLEGAL"
+    GAME_OVER = "GAME_OVER"
 
 
 class IllegalReason(enum.Enum):
@@ -83,18 +89,56 @@ def _illegality(state: State, player: Player, action: Action) -> IllegalReason |
     return None
 
 
+def _has_won(state: State, player: Player) -> bool:
+    """True if `player`'s hand is empty and, of their visible poles, only 3 has disks."""
+    return (
+        getattr(state, _HAND_OF[player]) is None
+        and not getattr(state, _POLE_OF[player, "SOURCE"])
+        and not state.pole_2
+        and bool(getattr(state, _POLE_OF[player, "TARGET"]))
+    )
+
+
+def _settle(state: State) -> State:
+    """Stamp the outcome, testing the win predicate for both players."""
+    won_a, won_b = _has_won(state, Player.A), _has_won(state, Player.B)
+    if won_a and won_b:
+        return replace(state, outcome=Outcome.DRAW)
+    if won_a:
+        return replace(state, outcome=Outcome.A_WINS)
+    if won_b:
+        return replace(state, outcome=Outcome.B_WINS)
+    return state
+
+
+def _advance(state: State) -> State:
+    """Burn a turn, leaving the board alone."""
+    return replace(state, step=state.step + 1)
+
+
 def legal_actions(state: State, player: Player) -> frozenset[Action]:
-    """The actions `player` may take now. `SKIP` is always among them."""
+    """The actions `player` may take now. `SKIP` is always among them.
+
+    A terminal state has none: the episode is over.
+    """
+    if state.outcome is not Outcome.IN_PROGRESS:
+        return frozenset()
     return frozenset(a for a in Action if _illegality(state, player, a) is None)
 
 
 def apply(state: State, player: Player, action: Action) -> ActionResult:
-    """Play one action. Pure, total, and always advances the step counter."""
+    """Play one action. Pure, total, and never raises.
+
+    The win predicate is evaluated for both players after every action, so a
+    player can win on their opponent's turn.
+    """
+    if state.outcome is not Outcome.IN_PROGRESS:
+        return ActionResult(state, ActionStatus.GAME_OVER)
     reason = _illegality(state, player, action)
     if reason is not None:
-        return ActionResult(replace(state, step=state.step + 1), ActionStatus.ILLEGAL, reason)
+        return ActionResult(_settle(_advance(state)), ActionStatus.ILLEGAL, reason)
     if action is Action.SKIP:
-        return ActionResult(replace(state, step=state.step + 1), ActionStatus.SKIPPED)
+        return ActionResult(_settle(_advance(state)), ActionStatus.SKIPPED)
 
     verb, pole_field, hand_field = _fields(player, action)
     pole: tuple[int, ...] = getattr(state, pole_field)
@@ -104,4 +148,4 @@ def apply(state: State, player: Player, action: Action) -> ActionResult:
         moved = {pole_field: pole[:-1], hand_field: pole[-1]}
     else:
         moved = {pole_field: pole + (hand,), hand_field: None}
-    return ActionResult(replace(state, **moved, step=state.step + 1), ActionStatus.OK)
+    return ActionResult(_settle(_advance(replace(state, **moved))), ActionStatus.OK)
