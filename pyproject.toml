@@ -1,0 +1,23 @@
+[project]
+name = "hanoi-crossing"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "manc1811", email = "mansi.rawat.1800@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+hanoi-replay = "hanoi_crossing.frontends.replay:main"
+hanoi-random = "hanoi_crossing.frontends.random_play:main"
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
